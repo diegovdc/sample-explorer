@@ -2,12 +2,13 @@
   (:require [clojure.core.async :as a]
             [overtone.core :as o]
             [sample-explorer.utils :refer [distinct-by if-let* sample-player find-index]]
-            [taoensso.timbre :as log]))
+            [taoensso.timbre :as log]
+            [clojure.java.io :as io]))
 
 (defprotocol Explorer
   (atom* [this] "Returns the data atom")
   (set-use-start-pos! [this bool] "Sets `:use-start-pos` to `bool`. This means that the `:start` val of the sample will be used as the `:start-pos` in the player.")
-  (play! [this] [this offset] "Play sound at current index")
+  (play! [this] [this {:keys [start-pos dur]}] "Play sound at current index")
   (play-index! [this] [this index] "Set `index` and play sound")
   (play-all! [this start-index] "Play all sounds in sequence")
   (prev! [this] "Set and play previous sound")
@@ -31,18 +32,18 @@
 
   (set-use-start-pos! [this bool] (swap! atom* assoc :use-start-pos? bool))
 
-  (play! [this] (.play! this (if (@atom* :use-start-pos?) nil 0)))
+  (play! [this] (.play! this
+                        {:start-pos (if (@atom* :use-start-pos?) nil 0)}))
 
-  (play! [this offset]
+  (play! [this {:keys [start-pos] :as opts}]
     (if-let* [i (@atom* :index)
               sample (-> @atom* :samples (nth i))
-              ;; `offset` should only be nil because of `:use-start-pos?`,
+              ;; `start-pos` should only be nil because of `:use-start-pos?`,
               ;; see the 1-arity `play!`
-              start-pos (if (nil? offset)
-                          (sample :start)
-                          offset)]
-      (do (sample-player (sample :path) start-pos)
-          sample)
+              opts* (assoc opts :start-pos
+                           (if (nil? start-pos) (sample :start) start-pos))]
+
+      (do (sample-player (sample :path) opts*) sample)
       (.next! this)))
 
   (play-index! [this index]
@@ -64,14 +65,14 @@
     (swap! atom* prev-index)
     (let [sample (-> @atom* :samples (nth (@atom* :index)))
           start-pos (if (@atom* :use-start-pos?) (sample :start) 0)]
-      (sample-player (sample :path) start-pos)))
+      (sample-player (sample :path) {:start-pos start-pos})))
 
   (next! [this]
     (swap! atom* next-index)
     (let [sample (-> @atom* :samples (nth (@atom* :index)))
           start-pos (if (@atom* :use-start-pos?) (sample :start) 0)]
       (log/info (select-keys sample [:index :length]))
-      (sample-player (sample :path) start-pos)))
+      (sample-player (sample :path) {:start-pos start-pos})))
 
   (select! [this {:keys [name tags start end opts]
                   :or {start 0
@@ -145,6 +146,7 @@
   (marks [this] (@atom* :marks))
 
   (save! [this path name]
+    (io/make-parents path)
     (spit path
           {:name name
            :data-file path
@@ -177,7 +179,10 @@
   (swap! data dissoc :index :selected)
   (def test-1 (->ml-explorer (-> @data atom)))
   (.prev! test-1)
-  (user/spy (.play! test-1 0))
+  (.next! test-1)
+  (user/spy (.play! test-1 {:start-pos 44100
+                            :dur 1
+                            :amp 4}))
   (.play-all! test-1 0)
   (.play-index! test-1 10)
   (.mark! test-1)
@@ -199,5 +204,4 @@
   (.play! sel-exp)
   (select-all! sel-exp)
   (.next! sel-exp)
-  (save! sel-exp "resources/tests/melodic-split/test-1/my-selection.edn" :my-selection)
-  )
+  (.save! sel-exp "resources/tests/melodic-split/test-1/my-selection.edn" :my-selection))
