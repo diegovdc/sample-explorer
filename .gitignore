@@ -2,3 +2,5 @@ native/
 target/
 resources/
 .nrepl-port
+/**/#*
+/**/.#*
