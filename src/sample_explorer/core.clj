@@ -116,3 +116,28 @@
 ((p1 :mark!))
 (deref (p1 :marks))
 ((p1 :stop!))
+
+(comment
+  (require '[overtone.osc :as osc])
+
+  (def reaper (osc/osc-client "127.0.0.1" 8000))
+
+  (osc/osc-send reaper "/play")
+  (osc/osc-send reaper "/stop")
+  (osc/osc-send reaper "/samples" (int 100000000))
+
+  (def PORT 4242)
+
+(def server (osc/osc-server PORT))
+
+
+(def client (osc/osc-client "localhost" PORT))
+(osc/osc-send-msg client {:path"/samples" :type-tag "i" :args [100000]})
+(osc/osc-handle server "/test" (fn [msg] (println "MSG: " msg)))
+
+
+
+(osc/osc-handle server "/samples" (fn [msg] (println "MSG: " msg)))
+(osc/osc-listen server (fn [msg] (println "Listener: " msg)) :debug)
+
+  )
